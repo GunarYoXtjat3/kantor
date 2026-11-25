@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kantor Modern Tim OpenCode — 3D Multi-Room</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --panel: rgba(15, 23, 42, 0.88);
+      --border: rgba(148, 163, 184, 0.2);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #canvas-wrap { position: fixed; inset: 0; }
+
+    /* HUD Top */
+    .hud-top {
+      position: fixed; top: 14px; left: 14px; right: 14px;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+      pointer-events: none; z-index: 10;
+    }
+    .brand, .controls, .user-badge {
+      pointer-events: auto;
+      background: var(--panel); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 10px 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .brand h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; display: flex; align-items: center; gap: 8px; }
+    .brand p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .user-badge { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    .user-badge span { color: #38bdf8; font-weight: 600; }
+
+    /* Login Modal */
+    #login-modal {
+      position: fixed; inset: 0; background: rgba(9, 13, 22, 0.85); backdrop-filter: blur(16px);
+      display: grid; place-items: center; z-index: 100; padding: 20px;
+    }
+    .login-box {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 28px; width: min(380px, 100%); box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+      text-align: center;
+    }
+    .login-box h2 { font-size: 20px; margin-bottom: 6px; }
+    .login-box p { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+    .login-input {
+      width: 100%; padding: 10px 14px; margin-bottom: 12px; background: rgba(30, 41, 59, 0.9);
+      border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;
+      outline: none; transition: border-color 0.2s;
+    }
+    .login-input:focus { border-color: #38bdf8; }
+    .login-btn {
+      width: 100%; padding: 10px; background: #2563eb; border: 1px solid #3b82f6; border-radius: 8px;
+      color: white; font-weight: 600; cursor: pointer; font-size: 14px; transition: background 0.2s;
+    }
+    .login-btn:hover { background: #1d4ed8; }
+    .login-error { color: #f43f5e; font-size: 11px; margin-top: 8px; display: none; }
+
+    .live-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 10px; font-weight: 700; margin-top: 4px;
+      padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.06);
+    }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+    .live-dot.on { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    button {
+      appearance: none; border: 1px solid var(--border); background: rgba(30, 41, 59, 0.85);
+      color: var(--text); font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 8px;
+      cursor: pointer; transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 6px;
+    }
+    button:hover { background: rgba(51, 65, 85, 0.95); border-color: rgba(255,255,255,0.3); }
+    button:active { transform: translateY(1px); }
+    button.active { border-color: #38bdf8; background: rgba(14, 116, 144, 0.45); }
+    button.primary { background: #2563eb; border-color: #3b82f6; }
+    button.primary:hover { background: #1d4ed8; }
+
+    /* Speech Bubbles ("Awan Teks") Overlay */
+    .bubble-layer { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+    .speech-bubble {
+      position: absolute; transform: translate(-50%, -100%);
+      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 14px;
+      padding: 8px 12px; min-width: 150px; max-width: 220px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+      pointer-events: auto; cursor: pointer; transition: opacity 0.2s, transform 0.2s;
+    }
+    .speech-bubble::after {
+      content: ''; position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+      border-width: 8px 7px 0 7px; border-style: solid;
+      border-color: rgba(15, 23, 42, 0.92) transparent transparent transparent;
+    }
+    .speech-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 3px; }
+    .speech-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .speech-mood { font-size: 12px; }
+    .speech-text { font-size: 11px; line-height: 1.35; color: #e2e8f0; font-weight: 500; }
+    .speech-state { font-size: 9px; margin-top: 4px; padding: 2px 6px; border-radius: 4px; display: inline-block; font-weight: 600; text-transform: uppercase; }
+    .speech-state.idle { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .speech-state.busy { background: rgba(34, 197, 94, 0.25); color: #4ade80; }
+
+    /* Card Details */
+    .card {
+      position: fixed; bottom: 16px; left: 16px; width: min(350px, calc(100vw - 32px));
+      background: var(--panel); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px;
+      z-index: 10; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+    }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.08);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .card h2 { font-size: 16px; margin-top: 6px; }
+    .card .role-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .card .desc { font-size: 12px; line-height: 1.45; margin-top: 8px; color: #e2e8f0; }
+    .meta {
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 10px; color: var(--muted);
+    }
+    .meta strong { display: block; color: var(--text); font-size: 11px; margin-top: 2px; }
+
+    /* Live Log Toast */
+    .live-log {
+      position: fixed; bottom: 16px; right: 16px; width: min(320px, calc(100vw - 32px));
+      background: var(--panel); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+      font-size: 11px; z-index: 9; max-height: 160px; overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .live-log h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .live-log ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    .live-log li { color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .live-log li span { color: #38bdf8; font-weight: 600; }
+
+    .flow-toast {
+      position: fixed; top: 72px; right: 14px; max-width: 320px;
+      background: var(--panel); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px;
+      font-size: 12px; z-index: 10; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .flow-toast.show { display: block; }
+    .flow-toast strong { color: #38bdf8; display: block; margin-bottom: 3px; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-wrap"></div>
+  <div class="bubble-layer" id="bubble-layer"></div>
+
+  <div class="hud-top">
+    <div class="brand">
+      <h1>🏢 OpenCode Modern Studio 3D</h1>
+      <p>5 Ruangan Pribadi Agen • Drag: putar • Scroll: zoom • Klik agen/ruangan</p>
+      <div class="live-pill"><span class="live-dot" id="live-dot"></span><span id="live-text">Standalone Mode</span></div>
+    </div>
+    <div class="user-badge" id="user-badge" style="display:none;">
+      Halo, <span id="display-user">Guest</span>
+      <button onclick="logout()">Keluar</button>
+    </div>
+    <div class="controls" id="controls">
+      <button data-focus="all" class="active">🌐 Seluruh Kantor</button>
+      <button data-focus="orchestrator">👑 Orchestrator</button>
+      <button data-focus="researcher">🔬 Researcher</button>
+      <button data-focus="designer">🎨 Designer</button>
+      <button data-focus="builder">💻 Builder</button>
+      <button data-focus="reviewer">🔍 Reviewer</button>
+      <button id="btn-sim" class="primary">⚡ Simulasi Alur Kerja</button>
+    </div>
+  </div>
+
+  <div id="login-modal">
+    <div class="login-box">
+      <h2>Selamat Datang</h2>
+      <p>Masuk ke kantor untuk menyimpan riwayat kerja Anda.</p>
+      <input type="text" id="login-user" class="login-input" placeholder="Nama Pengguna (misal: gunar)">
+      <input type="password" id="login-pin" class="login-input" placeholder="PIN (default: 1234)">
+      <button class="login-btn" onclick="login()">Masuk Kantor</button>
+      <div id="login-err" class="login-error">Username atau PIN salah!</div>
+    </div>
+  </div>
+
+  <aside class="card" id="info-card">
+    <div class="card-head">
+      <span class="badge"><span class="dot" id="card-dot"></span><span id="card-mode">primary</span></span>
+      <span style="font-size:10px;color:var(--muted)" id="card-room">Ruang 01</span>
+    </div>
+    <h2 id="card-title">Orchestrator</h2>
+    <div class="role-sub" id="card-sub">Kapten Tim</div>
+    <p class="desc" id="card-desc"></p>
+    <div class="meta">
+      <div>Akses File<strong id="card-perm">-</strong></div>
+      <div>Output Utama<strong id="card-out">-</strong></div>
+    </div>
+  </aside>
+
+  <div class="live-log" id="live-log">
+    <h3><span>Aktivitas Realtime</span> <span id="log-count">0 event</span></h3>
+    <ul id="live-list"><li>Menunggu koneksi server OpenCode...</li></ul>
+  </div>
+
+  <div class="flow-toast" id="flow-toast">
+    <strong id="flow-step">Alur Tim</strong>
+    <span id="flow-text"></span>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // 5 Agents with distinct individual rooms & default status quotes
+    const TEAM = [
+      {
+        id: 'orchestrator',
+        name: 'Orchestrator',
+        sub: 'Kapten Tim & Manajer Proyek',
+        mode: 'primary',
+        roomNo: 'RUANG 01 • EXECUTIVE SUITE',
+        color: 0xf59e0b,
+        hex: '#f59e0b',
+        mood: '👑',
+        perm: 'Subagent Delegation',
+        out: 'Brief Tim & Verifikasi',
+        desc: 'Memimpin alur kerja, menentukan strategi, membagi peran ke subagent, dan memastikan kualitas akhir lolos audit.',
+        pos: [0, 0, -6.5],
+        rotY: 0,
+        monitors: 2,
+        actionText: '📋 Menyusun strategi & membagi tugas...',
+        status: 'Standby'
+      },
+      {
+        id: 'researcher',
+        name: 'Researcher',
+        sub: 'Riset Kode, Web & Dokumentasi',
+        mode: 'subagent (read-only)',
+        roomNo: 'RUANG 02 • RESEARCH LAB',
+        color: 0x06b6d4,
+        hex: '#06b6d4',
+        mood: '🔬',
+        perm: 'Read / Glob / Grep / Web',
+        out: 'Summary, Facts, Handoff',
+        desc: 'Mencari fakta dari codebase, web, dan dokumen teknis sebelum eksekusi build. Menjamin validitas data tanpa ubah file.',
+        pos: [-7.2, 0, -2.5],
+        rotY: Math.PI * 0.25,
+        monitors: 2,
+        actionText: '🔍 Memeriksa codebase & referensi API...',
+        status: 'Analyzing'
+      },
+      {
+        id: 'designer',
+        name: 'Designer',
+        sub: 'Spesifikasi UI/UX, Layout & Copy',
+        mode: 'subagent (read-only)',
+        roomNo: 'RUANG 03 • CREATIVE STUDIO',
+        color: 0xa855f7,
+        hex: '#a855f7',
+        mood: '🎨',
+        perm: 'Read / Glob / Grep',
+        out: 'Layout, States, Tokens',
+        desc: 'Menyusun komponen antarmuka, tata letak visual, skema warna, state loading/error, dan aksesibilitas.',
+        pos: [7.2, 0, -2.5],
+        rotY: -Math.PI * 0.25,
+        monitors: 2,
+        actionText: '🎨 Mendesain token UI & hierarki layout...',
+        status: 'Designing'
+      },
+      {
+        id: 'builder',
+        name: 'Builder',
+        sub: 'Developer Utama (Single Writer)',
+        mode: 'subagent (edit)',
+        roomNo: 'RUANG 04 • DEV HUB',
+        color: 0x10b981,
+        hex: '#10b981',
+        mood: '💻',
+        perm: 'Edit / Write / Shell',
+        out: 'Changed Files, Verification',
+        desc: 'Satu-satunya agen yang mengubah file. Mengimplementasi brief dari Researcher/Designer dan memperbaiki bug dari Reviewer.',
+        pos: [-7.2, 0, 4.5],
+        rotY: Math.PI * 0.75,
+        monitors: 3,
+        actionText: '💻 Menguji kode & mengedit file...',
+        status: 'Coding'
+      },
+      {
+        id: 'reviewer',
+        name: 'Reviewer',
+        sub: 'Quality Gate & Code Auditor',
+        mode: 'subagent (read-only)',
+        roomNo: 'RUANG 05 • AUDIT & QA',
+        color: 0xf43f5e,
+        hex: '#f43f5e',
+        mood: '🔍',
+        perm: 'Read / Glob / Grep',
+        out: 'VERDICT: PASS | REVISE',
+        desc: 'Memeriksa diff kode terhadap kebutuhan user. Memberikan verdict PASS atau temuan perbaikan berprioritas P0/P1/P2.',
+        pos: [7.2, 0, 4.5],
+        rotY: -Math.PI * 0.75,
+        monitors: 2,
+        actionText: '✅ Memeriksa diff kode & standar sintaks...',
+        status: 'Auditing'
+      }
+    ];
+
+    const wrap = document.getElementById('canvas-wrap');
+    const bubbleLayer = document.getElementById('bubble-layer');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090d16);
+    scene.fog = new THREE.FogExp2(0x090d16, 0.022);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 16, 20);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    wrap.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI * 0.46;
+    controls.minDistance = 4;
+    controls.maxDistance = 32;
+    controls.target.set(0, 0.5, 0);
+
+    // Modern Lighting Architecture
+    scene.add(new THREE.AmbientLight(0x94a3b8, 0.85));
+    const hemi = new THREE.HemisphereLight(0xf8fafc, 0x0f172a, 0.65);
+    scene.add(hemi);
+
+    const mainSun = new THREE.DirectionalLight(0xffedd5, 1.4);
+    mainSun.position.set(12, 18, 14);
+    mainSun.castShadow = true;
+    mainSun.shadow.mapSize.set(2048, 2048);
+    mainSun.shadow.camera.near = 1;
+    mainSun.shadow.camera.far = 45;
+    mainSun.shadow.camera.left = -16;
+    mainSun.shadow.camera.right = 16;
+    mainSun.shadow.camera.top = 16;
+    mainSun.shadow.camera.bottom = -16;
+    mainSun.shadow.bias = -0.0004;
+    scene.add(mainSun);
+
+    // Warm Ambient Interior Light
+    const intLight = new THREE.PointLight(0x38bdf8, 0.8, 25);
+    intLight.position.set(0, 5, 0);
+    scene.add(intLight);
+
+    // Floor (Wood & Marble Combo)
+    const floorGeo = new THREE.BoxGeometry(24, 0.3, 20);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7, metalness: 0.1 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.position.y = -0.15;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // Modern Floor Tiles Grid Pattern
+    const grid = new THREE.GridHelper(24, 24, 0x334155, 0x0f172a);
+    grid.position.y = 0.008;
+    scene.add(grid);
+
+    // Corridor Central Carpet / Flooring Accent
+    const hallwayMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+    const hallway = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.02, 19.5), hallwayMat);
+    hallway.position.set(0, 0.015, 0);
+    hallway.receiveShadow = true;
+    scene.add(hallway);
+
+    // Wall Materials
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+    const woodWallMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x93c5fd, transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.1
+    });
+
+    function makeWall(w, h, d, x, y, z, mat = wallMat) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    }
+
+    // Outer Perimeter Walls
+    makeWall(24, 3.2, 0.3, 0, 1.6, -10); // Back
+    makeWall(0.3, 3.2, 20, -12, 1.6, 0); // Left
+    makeWall(0.3, 3.2, 20, 12, 1.6, 0);  // Right
+
+    // Interior Room Dividers (Creating 5 Distinct Private Offices)
+    // 1. Back Center Room Wall (Orchestrator Room)
+    makeWall(8.5, 3.0, 0.2, 0, 1.5, -3.2); // Front partition of Room 1
+    makeWall(0.2, 3.0, 6.8, -4.25, 1.5, -6.6); // Left side wall of Room 1
+    makeWall(0.2, 3.0, 6.8, 4.25, 1.5, -6.6);  // Right side wall of Room 1
+
+    // Glass Windows on Room 1 Front Wall
+    const win1 = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.8, 0.08), glassMat);
+    win1.position.set(-2.2, 1.6, -3.15);
+    scene.add(win1);
+    const win2 = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.8, 0.08), glassMat);
+    win2.position.set(2.2, 1.6, -3.15);
+    scene.add(win2);
+
+    // 2. Left Side Rooms Wall (Researcher & Builder)
+    makeWall(7.5, 3.0, 0.2, -8.25, 1.5, 1.0); // Divider between Room 2 & Room 4
+    makeWall(0.2, 3.0, 19.8, -4.5, 1.5, 0.1); // Inner hallway wall left
+
+    // 3. Right Side Rooms Wall (Designer & Reviewer)
+    makeWall(7.5, 3.0, 0.2, 8.25, 1.5, 1.0);  // Divider between Room 3 & Room 5
+    makeWall(0.2, 3.0, 19.8, 4.5, 1.5, 0.1);  // Inner hallway wall right
+
+    // Glass Windows along Hallway Walls
+    [-6.5, 5.5].forEach(z => {
+      const gL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.8, 3.2), glassMat);
+      gL.position.set(-4.45, 1.6, z);
+      scene.add(gL);
+      const gR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.8, 3.2), glassMat);
+      gR.position.set(4.45, 1.6, z);
+      scene.add(gR);
+    });
+
+    // Room Doors Signboard Plates & Room Rugs
+    function decorateRoom(agent) {
+      // Room Rug
+      const rug = new THREE.Mesh(
+        new THREE.BoxGeometry(5.2, 0.02, 4.8),
+        new THREE.MeshStandardMaterial({ color: agent.color, roughness: 0.8, opacity: 0.3, transparent: true })
+      );
+      rug.position.set(agent.pos[0], 0.012, agent.pos[2]);
+      rug.receiveShadow = true;
+      scene.add(rug);
+
+      // Room Overhead Spot Light
+      const spot = new THREE.PointLight(agent.color, 1.2, 8);
+      spot.position.set(agent.pos[0], 2.8, agent.pos[2]);
+      scene.add(spot);
+
+      // Room Name Banner Canvas
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.fillRect(0, 0, 512, 128);
+      ctx.strokeStyle = agent.hex;
+      ctx.lineWidth = 8;
+      ctx.strokeRect(6, 6, 500, 116);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 36px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(agent.roomNo, 256, 52);
+      ctx.fillStyle = agent.hex;
+      ctx.font = 'bold 26px system-ui, sans-serif';
+      ctx.fillText(agent.name.toUpperCase() + ' AGENT', 256, 96);
+
+      const tex = new THREE.CanvasTexture(c);
+      const signMat = new THREE.MeshBasicMaterial({ map: tex });
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), signMat);
+      sign.position.set(agent.pos[0], 2.7, agent.pos[2] + (agent.pos[2] < -5 ? 3.3 : agent.pos[0] < 0 ? 2.65 : 2.65));
+      if (agent.pos[2] >= -5) {
+        sign.rotation.y = agent.pos[0] < 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+      scene.add(sign);
+    }
+
+    TEAM.forEach(decorateRoom);
+
+    // Central Lounge Furniture in Corridor
+    // Coffee Lounge Table & Couches
+    const coffeeTableMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.4 });
+    const coffeeTable = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.45, 24), coffeeTableMat);
+    coffeeTable.position.set(0, 0.225, 0.5);
+    coffeeTable.castShadow = true; coffeeTable.receiveShadow = true;
+    scene.add(coffeeTable);
+
+    // Plant Pots around Central Corridor
+    function addPlant(x, z) {
+      const g = new THREE.Group();
+      const pot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.25, 0.5, 16),
+        new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 })
+      );
+      pot.position.y = 0.25; pot.castShadow = true;
+      g.add(pot);
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.6 });
+      for (let i = 0; i < 5; i++) {
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 7), leafMat);
+        leaf.position.set(Math.cos(i * 1.25) * 0.16, 0.7 + (i % 2) * 0.12, Math.sin(i * 1.25) * 0.16);
+        leaf.rotation.z = (i % 2 === 0 ? 0.2 : -0.2);
+        leaf.castShadow = true;
+        g.add(leaf);
+      }
+      g.position.set(x, 0, z);
+      scene.add(g);
+    }
+    addPlant(-4.0, -2.8);
+    addPlant(4.0, -2.8);
+    addPlant(-4.0, 4.2);
+    addPlant(4.0, 4.2);
+
+    // Build Character & Workstation per Agent
+    const stations = {};
+    const clickable = [];
+    const bubbles = {};
+
+    function createDOMBubble(agent) {
+      const div = document.createElement('div');
+      div.className = 'speech-bubble';
+      div.id = `bubble-${agent.id}`;
+      div.innerHTML = `
+        <div class="speech-head">
+          <span class="speech-name" style="color:${agent.hex}">${agent.name}</span>
+          <span class="speech-mood">${agent.mood}</span>
+        </div>
+        <div class="speech-text" id="text-${agent.id}">${agent.actionText}</div>
+        <span class="speech-state ${agent.status.toLowerCase() === 'standby' || agent.status.toLowerCase() === 'idle' ? 'idle' : 'busy'}" id="badge-${agent.id}">${agent.status}</span>
+      `;
+      div.addEventListener('click', () => selectAgent(agent.id));
+      bubbleLayer.appendChild(div);
+      return div;
+    }
+
+    TEAM.forEach(agent => {
+      const group = new THREE.Group();
+      group.position.set(...agent.pos);
+      group.rotation.y = agent.rotY;
+
+      // Desk
+      const deskMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 });
+      const deskTop = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 1.1), deskMat);
+      deskTop.position.set(0, 0.76, 0.25);
+      deskTop.castShadow = true; deskTop.receiveShadow = true;
+      group.add(deskTop);
+
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.6 });
+      for (const lx of [-1.05, 1.05]) {
+        for (const lz of [-0.2, 0.7]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.76, 0.08), legMat);
+          leg.position.set(lx, 0.38, lz);
+          leg.castShadow = true;
+          group.add(leg);
+        }
+      }
+
+      // Monitors with Glowing Screens
+      const monCount = agent.monitors;
+      for (let i = 0; i < monCount; i++) {
+        const offset = (i - (monCount - 1) / 2) * 0.72;
+        const monGroup = new THREE.Group();
+        const frame = new THREE.Mesh(
+          new THREE.BoxGeometry(0.68, 0.44, 0.04),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
+        );
+        const screen = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.62, 0.38),
+          new THREE.MeshBasicMaterial({ color: agent.color })
+        );
+        screen.position.z = -0.021;
+        screen.rotation.y = Math.PI;
+        const stand = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 0.22, 0.06),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b })
+        );
+        stand.position.y = -0.26;
+        monGroup.add(frame, screen, stand);
+        monGroup.position.set(offset, 1.14, 0.55);
+        monGroup.rotation.y = -offset * 0.22;
+        group.add(monGroup);
+      }
+
+      // Chair
+      const chairMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 });
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.55), chairMat);
+      seat.position.set(0, 0.46, -0.48);
+      seat.castShadow = true;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.65, 0.08), chairMat);
+      back.position.set(0, 0.82, -0.74);
+      back.castShadow = true;
+      group.add(seat, back);
+
+      // Stylized Character with Expressive Face & Body
+      const charGroup = new THREE.Group();
+      charGroup.position.set(0, 0.5, -0.44);
+
+      const torso = new THREE.Mesh(
+        new THREE.BoxGeometry(0.48, 0.54, 0.3),
+        new THREE.MeshStandardMaterial({ color: agent.color, roughness: 0.5 })
+      );
+      torso.position.y = 0.27;
+      torso.castShadow = true;
+      charGroup.add(torso);
+
+      // Head
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 20, 16),
+        new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.6 })
+      );
+      head.position.y = 0.72;
+      head.castShadow = true;
+      charGroup.add(head);
+
+      // Expressive Glasses / Visor
+      const visor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.09, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8 })
+      );
+      visor.position.set(0, 0.74, 0.18);
+      charGroup.add(visor);
+
+      // Arms (Typing Motion)
+      const armMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+      const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.36, 0.12), armMat);
+      leftArm.position.set(-0.32, 0.32, 0.2);
+      leftArm.rotation.x = -Math.PI * 0.36;
+      const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.36, 0.12), armMat);
+      rightArm.position.set(0.32, 0.32, 0.2);
+      rightArm.rotation.x = -Math.PI * 0.36;
+      charGroup.add(leftArm, rightArm);
+
+      group.add(charGroup);
+
+      // Floating 3D Status Aura Ring under desk
+      const aura = new THREE.Mesh(
+        new THREE.RingGeometry(0.4, 0.7, 32),
+        new THREE.MeshBasicMaterial({ color: agent.color, side: THREE.DoubleSide, transparent: true, opacity: 0.2 })
+      );
+      aura.rotation.x = -Math.PI / 2;
+      aura.position.set(0, 0.04, -0.44);
+      group.add(aura);
+
+      // Invisible Click Target
+      const hit = new THREE.Mesh(
+        new THREE.BoxGeometry(2.8, 2.4, 2.5),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      hit.position.y = 1.2;
+      hit.userData.agentId = agent.id;
+      group.add(hit);
+      clickable.push(hit);
+
+      scene.add(group);
+
+      const domBubble = createDOMBubble(agent);
+      bubbles[agent.id] = domBubble;
+
+      stations[agent.id] = {
+        agent, group, charGroup, head, leftArm, rightArm, aura, domBubble,
+        pulseTimer: 0, isActive: false, currentActionText: agent.actionText, currentStatus: agent.status
+      };
+    });
+
+    // Packet Orb for Workflow Simulation
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+    );
+    orb.visible = false;
+    scene.add(orb);
+
+    // Camera & Selection State
+    let camTargetPos = null;
+    let camTargetLook = null;
+
+    function selectAgent(id) {
+      document.querySelectorAll('#controls button[data-focus]').forEach(b => {
+        b.classList.toggle('active', b.dataset.focus === id);
+      });
+
+      if (id === 'all') {
+        camTargetPos = new THREE.Vector3(0, 16, 20);
+        camTargetLook = new THREE.Vector3(0, 0.5, 0);
+        showCard(TEAM[0]);
+        return;
+      }
+
+      const st = stations[id];
+      if (!st) return;
+      showCard(st.agent);
+
+      const worldPos = new THREE.Vector3(...st.agent.pos);
+      const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), st.agent.rotY);
+      camTargetPos = worldPos.clone().addScaledVector(forward, 4.8).add(new THREE.Vector3(0, 2.8, 0));
+      camTargetLook = worldPos.clone().add(new THREE.Vector3(0, 1.1, 0));
+    }
+
+    function showCard(a) {
+      document.getElementById('card-dot').style.background = a.hex;
+      document.getElementById('card-mode').textContent = a.mode;
+      document.getElementById('card-room').textContent = a.roomNo;
+      document.getElementById('card-title').textContent = a.name;
+      document.getElementById('card-sub').textContent = a.sub;
+      document.getElementById('card-desc').textContent = a.desc;
+      document.getElementById('card-perm').textContent = a.perm;
+      document.getElementById('card-out').textContent = a.out;
+    }
+    showCard(TEAM[0]);
+
+    document.getElementById('controls').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-focus]');
+      if (btn) selectAgent(btn.dataset.focus);
+    });
+
+    // Raycast Clicks
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let downPt = { x: 0, y: 0 };
+    renderer.domElement.addEventListener('pointerdown', (e) => { downPt = { x: e.clientX, y: e.clientY }; });
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      if (Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y) > 6) return;
+      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(clickable);
+      if (hits.length) selectAgent(hits[0].object.userData.agentId);
+    });
+
+    // Workflow Simulation Data
+    const FLOW = [
+      { from: 'orchestrator', to: 'researcher', label: '1. Riset & Cek Kode', text: 'Orchestrator mengirimkan instruksi riset ke Researcher.' },
+      { from: 'researcher', to: 'designer', label: '2. Spesifikasi UI/UX', text: 'Researcher menyerahkan fakta ke Designer untuk menyusun token visual & state.' },
+      { from: 'designer', to: 'builder', label: '3. Eksekusi Koding', text: 'Builder menerima spesifikasi dan mulai mengubah file kodingan.' },
+      { from: 'builder', to: 'reviewer', label: '4. Audit & Quality Gate', text: 'Reviewer memeriksa file diff untuk memverifikasi kesalahan.' },
+      { from: 'reviewer', to: 'orchestrator', label: '5. PASS & Selesai', text: 'Reviewer memberikan verdict PASS kembali ke Orchestrator. Tugas sukses!' }
+    ];
+    let simState = null;
+    const toast = document.getElementById('flow-toast');
+
+    document.getElementById('btn-sim').addEventListener('click', () => {
+      selectAgent('all');
+      simState = { step: 0, t: 0 };
+      orb.visible = true;
+      toast.classList.add('show');
+    });
+
+    // Update 3D World Positions of DOM Speech Bubbles
+    const tempVec = new THREE.Vector3();
+    function updateSpeechBubbles() {
+      TEAM.forEach(a => {
+        const st = stations[a.id];
+        tempVec.set(...a.pos).add(new THREE.Vector3(0, 2.35, 0));
+        tempVec.project(camera);
+
+        const x = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-tempVec.y * 0.5 + 0.5) * window.innerHeight;
+
+        const isBehind = tempVec.z > 1;
+        if (isBehind) {
+          st.domBubble.style.opacity = '0';
+        } else {
+          st.domBubble.style.opacity = '1';
+          st.domBubble.style.left = `${x}px`;
+          st.domBubble.style.top = `${y}px`;
+        }
+
+        // Update Text & Badge
+        const textEl = document.getElementById(`text-${a.id}`);
+        const badgeEl = document.getElementById(`badge-${a.id}`);
+        if (textEl && textEl.textContent !== st.currentActionText) textEl.textContent = st.currentActionText;
+        if (badgeEl && badgeEl.textContent !== st.currentStatus) {
+          badgeEl.textContent = st.currentStatus;
+          badgeEl.className = `speech-state ${st.currentStatus.toLowerCase() === 'standby' || st.currentStatus.toLowerCase() === 'idle' ? 'idle' : 'busy'}`;
+        }
+      });
+    }
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.elapsedTime;
+
+      // Character Expressions & Typing Animations
+      TEAM.forEach((a, idx) => {
+        const st = stations[a.id];
+        const isBusy = st.isActive || st.pulseTimer > 0;
+        const speed = isBusy ? 20 : 8;
+        const amp = isBusy ? 0.18 : 0.07;
+
+        st.charGroup.position.y = 0.5 + Math.sin(elapsed * (isBusy ? 5 : 2.2) + idx) * (isBusy ? 0.04 : 0.015);
+        st.head.rotation.y = Math.sin(elapsed * 1.5 + idx) * 0.15;
+        st.head.rotation.z = Math.cos(elapsed * 1.2 + idx) * 0.05;
+        st.leftArm.rotation.x = -Math.PI * 0.36 + Math.sin(elapsed * speed + idx) * amp;
+        st.rightArm.rotation.x = -Math.PI * 0.36 + Math.cos(elapsed * speed + idx) * amp;
+
+        if (st.pulseTimer > 0) st.pulseTimer -= dt;
+        st.aura.material.opacity = isBusy ? 0.5 + Math.sin(elapsed * 8 + idx) * 0.3 : 0.18;
+      });
+
+      // Smooth Camera Lerp
+      if (camTargetPos && camTargetLook) {
+        camera.position.lerp(camTargetPos, 0.07);
+        controls.target.lerp(camTargetLook, 0.07);
+        if (camera.position.distanceTo(camTargetPos) < 0.06) {
+          camTargetPos = null;
+          camTargetLook = null;
+        }
+      }
+
+      // Workflow Simulation Animation
+      if (simState) {
+        const cur = FLOW[simState.step];
+        document.getElementById('flow-step').textContent = cur.label;
+        document.getElementById('flow-text').textContent = cur.text;
+
+        const p0 = new THREE.Vector3(...stations[cur.from].agent.pos).add(new THREE.Vector3(0, 1.4, 0));
+        const p1 = new THREE.Vector3(...stations[cur.to].agent.pos).add(new THREE.Vector3(0, 1.4, 0));
+        simState.t += dt * 0.65;
+        const u = Math.min(simState.t, 1);
+        orb.position.lerpVectors(p0, p1, u);
+        orb.position.y += Math.sin(u * Math.PI) * 1.6;
+
+        // Activate Bubble Status during Simulation
+        stations[cur.from].currentStatus = 'Active';
+        stations[cur.from].currentActionText = cur.label;
+        stations[cur.from].pulseTimer = 1.0;
+
+        if (simState.t >= 1) {
+          simState.step++;
+          simState.t = 0;
+          if (simState.step >= FLOW.length) {
+            simState = null;
+            orb.visible = false;
+            setTimeout(() => toast.classList.remove('show'), 2500);
+          }
+        }
+      }
+
+      updateSpeechBubbles();
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Realtime Backend Integration via SSE
+    const liveDot = document.getElementById('live-dot');
+    const liveText = document.getElementById('live-text');
+    const liveList = document.getElementById('live-list');
+    const logCount = document.getElementById('log-count');
+    const logs = [];
+
+    function addLiveLog(msg, agentId) {
+      const timeStr = new Date().toLocaleTimeString('id-ID', { hour12: false });
+      const name = agentId ? (stations[agentId]?.agent.name || agentId) : 'System';
+      logs.unshift(`<li>[${timeStr}] <span>${name}</span>: ${msg}</li>`);
+      if (logs.length > 5) logs.length = 5;
+      liveList.innerHTML = logs.join('');
+      logCount.textContent = `${logs.length} event`;
+    }
+
+    if (location.protocol.startsWith('http')) {
+      const es = new EventSource('/api/events');
+      es.addEventListener('state', (e) => {
+        try {
+          const s = JSON.parse(e.data);
+          if (s.connected) {
+            liveDot.classList.add('on');
+            liveText.textContent = 'Realtime Live (' + (s.opencodeUrl || 'OpenCode') + ')';
+          } else {
+            liveDot.classList.remove('on');
+            liveText.textContent = 'OpenCode Service Standby';
+          }
+          TEAM.forEach(a => {
+            const activeInfo = s.activeAgents && s.activeAgents[a.id];
+            if (activeInfo) {
+              stations[a.id].isActive = true;
+              stations[a.id].currentStatus = 'Working';
+              stations[a.id].currentActionText = activeInfo.title || '⚡ Sedang memproses tugas...';
+            } else if (!simState) {
+              stations[a.id].isActive = false;
+              stations[a.id].currentStatus = a.status;
+              stations[a.id].currentActionText = a.actionText;
+            }
+          });
+        } catch {}
+      });
+
+      es.addEventListener('activity', (e) => {
+        try {
+          const act = JSON.parse(e.data);
+          const targetId = act.agent || 'orchestrator';
+          if (stations[targetId]) {
+            stations[targetId].pulseTimer = 3.0;
+            stations[targetId].currentStatus = 'Busy';
+            const detail = act.tool ? `Menggunakan tool ${act.tool}` : `Memproses event ${act.type}`;
+            stations[targetId].currentActionText = `⚡ ${detail}`;
+            addLiveLog(detail, targetId);
+          }
+        } catch {}
+      });
+
+      es.onerror = () => {
+        liveDot.classList.remove('on');
+        liveText.textContent = 'Offline (Mencari Server...)';
+      };
+    } else {
+      liveText.textContent = 'Buka via http://localhost:3456';
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Auth logic
+    window.login = async () => {
+      const u = document.getElementById('login-user').value;
+      const p = document.getElementById('login-pin').value;
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, pin: p })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('oc_user', data.username);
+        document.getElementById('login-modal').style.display = 'none';
+        document.getElementById('user-badge').style.display = 'flex';
+        document.getElementById('display-user').textContent = data.username;
+        loadUserHistory(data.username);
+      } else {
+        document.getElementById('login-err').style.display = 'block';
+        document.getElementById('login-err').textContent = data.error || 'Login gagal';
+      }
+    };
+
+    window.logout = () => {
+      localStorage.removeItem('oc_user');
+      location.reload();
+    };
+
+    function loadUserHistory(u) {
+      fetch('/api/history?user=' + u).then(r=>r.json()).then(d => {
+        if (d.history) d.history.forEach(h => addLiveLog(h.text, h.agent));
+      });
+    }
+
+    if (localStorage.getItem('oc_user')) {
+      const u = localStorage.getItem('oc_user');
+      document.getElementById('login-modal').style.display = 'none';
+      document.getElementById('user-badge').style.display = 'flex';
+      document.getElementById('display-user').textContent = u;
+      loadUserHistory(u);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
