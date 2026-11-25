@@ -904,7 +904,7 @@
 
       es.onerror = () => {
         liveDot.classList.remove('on');
-        liveText.textContent = 'Offline (Mencari Server...)';
+        if (!/Standby/.test(liveText.textContent)) liveText.textContent = 'Offline (Mencari Server...)';
       };
     } else {
       liveText.textContent = 'Buka via http://localhost:3456';
